@@ -3,9 +3,13 @@ import {
   CategorySummary,
   DeviceDetails,
   DeviceSummary,
+  DeviceTotals,
   FlowFilters,
   FlowRecord,
-  ImportRecord
+  ImportRecord,
+  ImportFlow,
+  LiveInterface,
+  LiveStatus
 } from "./types";
 import {
   Area,
@@ -21,6 +25,16 @@ import {
 } from "recharts";
 
 const DEFAULT_FILTERS: FlowFilters = {};
+const DEFAULT_LIVE_STATUS: LiveStatus = {
+  running: false,
+  importId: null,
+  interfaceName: null
+};
+const DEFAULT_DEVICE_TOTALS: DeviceTotals = {
+  device_count: 0,
+  total_bytes: 0,
+  total_packets: 0
+};
 
 const formatBytes = (value: number) => {
   if (value === 0) return "0 B";
@@ -29,8 +43,11 @@ const formatBytes = (value: number) => {
   return `${(value / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
 };
 
-const formatDateTime = (value: string | null) =>
-  value ? new Date(value).toLocaleString("de-DE") : "-";
+const formatDateTime = (value: string | null) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleString("de-DE");
+};
 
 export default function App() {
   const [imports, setImports] = useState<ImportRecord[]>([]);
@@ -43,41 +60,103 @@ export default function App() {
   const [filters, setFilters] = useState<FlowFilters>(DEFAULT_FILTERS);
   const [renameValue, setRenameValue] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [interfaces, setInterfaces] = useState<LiveInterface[]>([]);
+  const [selectedInterface, setSelectedInterface] = useState("");
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>(DEFAULT_LIVE_STATUS);
+  const [importFlows, setImportFlows] = useState<ImportFlow[]>([]);
+  const [isDeviceLoading, setIsDeviceLoading] = useState(false);
+  const [isImportLoading, setIsImportLoading] = useState(false);
+  const [showAllDevices, setShowAllDevices] = useState(false);
+  const [deviceTotals, setDeviceTotals] = useState<DeviceTotals>(DEFAULT_DEVICE_TOTALS);
 
   const refreshImports = useCallback(async () => {
-    const items = await window.netscope.getImports();
+    const [items, status] = await Promise.all([
+      window.netscope.getImports(),
+      window.netscope.getLiveStatus()
+    ]);
     setImports(items);
+    setLiveStatus(status);
     if (items.length && selectedImportId === null) {
       setSelectedImportId(items[0].id);
     }
   }, [selectedImportId]);
 
   useEffect(() => {
+    window.netscope
+      .listInterfaces()
+      .then(list => {
+        setInterfaces(list);
+        setSelectedInterface(current => current || list[0]?.name || "");
+      })
+      .catch(error => {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      });
+  }, []);
+
+  useEffect(() => {
     refreshImports();
-    const interval = setInterval(refreshImports, 2000);
+    const interval = setInterval(refreshImports, 4000);
     return () => clearInterval(interval);
   }, [refreshImports]);
 
+  const refreshDeviceData = useCallback(async () => {
+    if (!selectedImportId) return;
+    setIsDeviceLoading(true);
+    try {
+      const [deviceList, totals] = await Promise.all([
+        showAllDevices
+          ? window.netscope.getAllDevices(selectedImportId)
+          : window.netscope.getDevices(selectedImportId),
+        window.netscope.getDeviceTotals(selectedImportId)
+      ]);
+      setDevices(deviceList);
+      setDeviceTotals(totals);
+      if (!selectedDeviceId) return;
+      const detail = await window.netscope.getDeviceDetails(selectedImportId, selectedDeviceId);
+      setDeviceDetails(detail);
+      setRenameValue(detail.name);
+      const categoryList = await window.netscope.getCategories(selectedImportId, selectedDeviceId);
+      setCategories(categoryList);
+      const flowList = await window.netscope.getFlows(selectedImportId, selectedDeviceId, filters);
+      setFlows(flowList);
+    } finally {
+      setIsDeviceLoading(false);
+    }
+  }, [filters, selectedDeviceId, selectedImportId, showAllDevices]);
+
+  useEffect(() => {
+    refreshDeviceData();
+    if (!selectedImportId) return;
+    const interval = setInterval(refreshDeviceData, 4000);
+    return () => clearInterval(interval);
+  }, [refreshDeviceData, selectedImportId]);
+
+  const refreshImportTraffic = useCallback(async () => {
+    if (!selectedImportId) return;
+    setIsImportLoading(true);
+    try {
+      const flowList = await window.netscope.getImportFlows(selectedImportId);
+      setImportFlows(flowList);
+    } finally {
+      setIsImportLoading(false);
+    }
+  }, [selectedImportId]);
+
+  useEffect(() => {
+    refreshImportTraffic();
+    if (!selectedImportId) return;
+    const interval = setInterval(refreshImportTraffic, 4000);
+    return () => clearInterval(interval);
+  }, [refreshImportTraffic, selectedImportId]);
+
   useEffect(() => {
     if (!selectedImportId) return;
-    window.netscope.getDevices(selectedImportId).then(setDevices);
     setSelectedDeviceId(null);
     setDeviceDetails(null);
     setCategories([]);
     setFlows([]);
+    setShowAllDevices(false);
   }, [selectedImportId]);
-
-  useEffect(() => {
-    if (!selectedImportId || !selectedDeviceId) return;
-    window.netscope.getDeviceDetails(selectedImportId, selectedDeviceId).then(data => {
-      setDeviceDetails(data);
-      setRenameValue(data.name);
-    });
-    window.netscope.getCategories(selectedImportId, selectedDeviceId).then(setCategories);
-    window.netscope
-      .getFlows(selectedImportId, selectedDeviceId, filters)
-      .then(setFlows);
-  }, [selectedImportId, selectedDeviceId, filters]);
 
   const handleImport = async () => {
     setErrorMessage(null);
@@ -91,11 +170,39 @@ export default function App() {
     }
   };
 
+  const handleStartLive = async () => {
+    if (!selectedInterface) {
+      setErrorMessage("No capture interface selected.");
+      return;
+    }
+    setErrorMessage(null);
+    try {
+      const importId = await window.netscope.startLiveCapture(selectedInterface);
+      await refreshImports();
+      setSelectedImportId(importId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleStopLive = async () => {
+    setErrorMessage(null);
+    try {
+      const importId = await window.netscope.stopLiveCapture();
+      await refreshImports();
+      if (importId) setSelectedImportId(importId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const handleRename = async () => {
     if (!selectedDeviceId || !renameValue.trim()) return;
     await window.netscope.renameDevice(selectedDeviceId, renameValue.trim());
     if (selectedImportId) {
-      const updated = await window.netscope.getDevices(selectedImportId);
+      const updated = showAllDevices
+        ? await window.netscope.getAllDevices(selectedImportId)
+        : await window.netscope.getDevices(selectedImportId);
       setDevices(updated);
       const detail = await window.netscope.getDeviceDetails(
         selectedImportId,
@@ -117,6 +224,23 @@ export default function App() {
     return Array.from(map.entries()).map(([time, bytes]) => ({ time, bytes }));
   }, [flows]);
 
+  const importTrafficSeries = useMemo(() => {
+    const map = new Map<string, number>();
+    importFlows.forEach(flow => {
+      const key = new Date(flow.start_time).toLocaleTimeString("de-DE", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+      map.set(key, (map.get(key) ?? 0) + flow.bytes_total);
+    });
+    return Array.from(map.entries()).map(([time, bytes]) => ({ time, bytes }));
+  }, [importFlows]);
+
+  const totalImportBytes = useMemo(
+    () => importFlows.reduce((sum, flow) => sum + flow.bytes_total, 0),
+    [importFlows]
+  );
+
   const categorySeries = useMemo(() => {
     return categories.map(category => ({
       name: category.name,
@@ -137,12 +261,49 @@ export default function App() {
             PCAP/PCAPNG Imports, Flow-Aggregation und Device-Analytics
           </p>
         </div>
-        <button
-          onClick={handleImport}
-          className="rounded bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400"
-        >
-          PCAP importieren
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm">
+            <span className="text-xs uppercase text-slate-500">Live</span>
+            <select
+              value={selectedInterface}
+              onChange={event => setSelectedInterface(event.target.value)}
+              disabled={liveStatus.running}
+              className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm"
+            >
+              {interfaces.map(item => (
+                <option key={item.id} value={item.name}>
+                  {item.description ? `${item.description} (${item.name})` : item.name}
+                </option>
+              ))}
+              {!interfaces.length && <option value="">No interfaces</option>}
+            </select>
+            <button
+              onClick={handleStartLive}
+              disabled={liveStatus.running || !selectedInterface}
+              className="rounded bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/40"
+            >
+              Start
+            </button>
+            <button
+              onClick={handleStopLive}
+              disabled={!liveStatus.running}
+              className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-800/40"
+            >
+              Stop
+            </button>
+            {liveStatus.running && (
+              <span className="text-xs text-emerald-300">
+                running {liveStatus.interfaceName ?? ""}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleImport}
+            className="rounded bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400"
+          >
+            PCAP importieren
+          </button>
+        </div>
       </header>
 
       {errorMessage && (
@@ -187,7 +348,24 @@ export default function App() {
           </div>
 
           <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-            <h2 className="mb-3 text-sm font-semibold uppercase text-slate-400">Geräte</h2>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold uppercase text-slate-400">Ger?te</h2>
+                <p className="text-xs text-slate-500">
+                  {showAllDevices
+                    ? `${deviceTotals.device_count} Ger?te ? ${formatBytes(
+                        deviceTotals.total_bytes
+                      )}`
+                    : `Top 10 ? ${deviceTotals.device_count} gesamt`}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAllDevices(current => !current)}
+                className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300 hover:border-slate-600"
+              >
+                {showAllDevices ? "Top 10" : "Alle"}
+              </button>
+            </div>
             <div className="space-y-2">
               {devices.map(device => (
                 <button
@@ -215,7 +393,7 @@ export default function App() {
               ))}
               {!devices.length && (
                 <div className="text-sm text-slate-500">
-                  Wähle einen Import, um Geräte zu sehen.
+                  W?hle einen Import, um Ger?te zu sehen.
                 </div>
               )}
             </div>
@@ -223,6 +401,47 @@ export default function App() {
         </section>
 
         <section className="space-y-4">
+          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">Gesamttraffic</h2>
+                <p className="text-sm text-slate-400">
+                  {selectedImportId
+                    ? `${formatBytes(totalImportBytes)} gesamt`
+                    : "Wähle einen Import"}
+                </p>
+              </div>
+              {liveStatus.running && (
+                <span className="rounded bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-300">
+                  live
+                </span>
+              )}
+            </div>
+            <div className="mt-4 h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={importTrafficSeries}>
+                  <defs>
+                    <linearGradient id="importTraffic" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis dataKey="time" stroke="#94a3b8" />
+                  <YAxis stroke="#94a3b8" />
+                  <Tooltip />
+                  <Area
+                    type="monotone"
+                    dataKey="bytes"
+                    stroke="#22d3ee"
+                    fillOpacity={1}
+                    fill="url(#importTraffic)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>

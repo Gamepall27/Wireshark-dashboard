@@ -1,10 +1,20 @@
 import Database from "better-sqlite3";
 import { app } from "electron";
 import path from "node:path";
-import { FlowFilters, ImportStatus, ParsedPacket } from "./types";
-import { categorizeTraffic } from "./rules";
+import { FlowFilters, ImportStatus, ParsedPacket } from "./types.js";
+import { categorizeTraffic } from "./rules.js";
 
 let db: Database.Database | null = null;
+const MAX_DEVICE_FLOWS = 25;
+
+const buildDeviceName = (mac: string | null, ip: string | null, fallback: string) => {
+  if (mac) return `Device ${mac.replace(/:/g, "").slice(-4).toUpperCase()}`;
+  if (ip) return `IP ${ip}`;
+  return `IP ${fallback}`;
+};
+
+const isAutoName = (name: string, deviceIp: string | null, fallback: string) =>
+  name === buildDeviceName(null, deviceIp, fallback) || /^Device\s[0-9A-F]{4}$/.test(name);
 
 const ensureDb = () => {
   if (db) return db;
@@ -105,50 +115,61 @@ const resolveDevice = (
 ): { deviceId: number; host: string | null; categoryId: number | null } => {
   const database = ensureDb();
   const now = packet.timestamp;
-  const identifier = packet.src_mac ?? packet.src_ip ?? "unknown";
+  const identifier =
+    packet.src_mac ?? packet.dst_mac ?? packet.src_ip ?? packet.dst_ip ?? "unknown";
+  const deviceMac = packet.src_mac ?? packet.dst_mac ?? null;
+  const deviceIp = packet.src_ip ?? packet.dst_ip ?? null;
 
-  let device = null as null | { id: number; name: string };
-  if (packet.src_mac) {
-    device = database
-      .prepare(`SELECT id, name FROM devices WHERE mac = ?`)
-      .get(packet.src_mac) as { id: number; name: string } | undefined;
+  let device = null as null | { id: number; name: string; mac: string | null };
+  if (deviceMac) {
+    const found = database
+      .prepare(`SELECT id, name, mac FROM devices WHERE mac = ?`)
+      .get(deviceMac) as { id: number; name: string; mac: string | null } | undefined;
+    device = found ?? null;
   }
 
-  if (!device && packet.src_ip) {
-    device = database
+  if (!device && deviceIp) {
+    const found = database
       .prepare(
-        `SELECT devices.id, devices.name FROM devices
+        `SELECT devices.id, devices.name, devices.mac FROM devices
          JOIN device_ips ON device_ips.device_id = devices.id
          WHERE device_ips.ip = ?`
       )
-      .get(packet.src_ip) as { id: number; name: string } | undefined;
+      .get(deviceIp) as { id: number; name: string; mac: string | null } | undefined;
+    device = found ?? null;
   }
 
   if (!device) {
-    const name = packet.src_mac
-      ? `Device ${packet.src_mac.replace(/:/g, "").slice(-4).toUpperCase()}`
-      : `IP ${identifier}`;
+    const name = buildDeviceName(deviceMac, deviceIp, identifier);
     const info = database
       .prepare(
         `INSERT INTO devices (name, mac, vendor, first_seen, last_seen)
          VALUES (?, ?, ?, ?, ?)`
       )
-      .run(name, packet.src_mac, null, now, now);
-    device = { id: Number(info.lastInsertRowid), name };
+      .run(name, deviceMac, null, now, now);
+    device = { id: Number(info.lastInsertRowid), name, mac: deviceMac };
+  } else if (deviceMac && !device.mac) {
+    const nextName = isAutoName(device.name, deviceIp, identifier)
+      ? buildDeviceName(deviceMac, deviceIp, identifier)
+      : device.name;
+    database
+      .prepare(`UPDATE devices SET mac = ?, name = ? WHERE id = ?`)
+      .run(deviceMac, nextName, device.id);
+    device = { ...device, name: nextName };
   }
 
   database
     .prepare(`UPDATE devices SET last_seen = ? WHERE id = ?`)
     .run(now, device.id);
 
-  if (packet.src_ip) {
+  if (deviceIp) {
     database
       .prepare(
         `INSERT INTO device_ips (device_id, ip, first_seen, last_seen)
          VALUES (?, ?, ?, ?)
          ON CONFLICT(device_id, ip) DO UPDATE SET last_seen = excluded.last_seen`
       )
-      .run(device.id, packet.src_ip, now, now);
+      .run(device.id, deviceIp, now, now);
   }
 
   const categoryName = categorizeTraffic(packet.host, packet.src_port, packet.dst_port, packet.proto);
@@ -216,11 +237,42 @@ export const getDevices = (importId: number) => {
        JOIN flows ON flows.device_id = devices.id
        WHERE flows.import_id = ?
        GROUP BY devices.id
+       ORDER BY total_bytes DESC
+       LIMIT 10`
+    )
+    .all(importId);
+};
+
+export const getAllDevices = (importId: number) => {
+  const database = ensureDb();
+  return database
+    .prepare(
+      `SELECT devices.*, COALESCE(SUM(flows.bytes_total), 0) AS total_bytes
+       FROM devices
+       JOIN flows ON flows.device_id = devices.id
+       WHERE flows.import_id = ?
+       GROUP BY devices.id
        ORDER BY total_bytes DESC`
     )
     .all(importId);
 };
 
+export const getDeviceTotals = (importId: number) => {
+  const database = ensureDb();
+  return database
+    .prepare(
+      `SELECT COUNT(DISTINCT device_id) AS device_count,
+              COALESCE(SUM(bytes_total), 0) AS total_bytes,
+              COALESCE(SUM(packets), 0) AS total_packets
+       FROM flows
+       WHERE import_id = ?`
+    )
+    .get(importId) as {
+    device_count: number;
+    total_bytes: number;
+    total_packets: number;
+  };
+};
 export const getDeviceDetails = (importId: number, deviceId: number) => {
   const database = ensureDb();
   return database
@@ -290,9 +342,25 @@ export const getFlows = (importId: number, deviceId: number, filters: FlowFilter
     LEFT JOIN categories ON categories.id = flows.category_id
     WHERE ${where.join(" AND ")}
     ORDER BY flows.bytes_total DESC
+    LIMIT ${MAX_DEVICE_FLOWS}
   `;
 
   return database.prepare(query).all(...params);
+};
+
+export const getImportFlows = (importId: number) => {
+  const database = ensureDb();
+  return database
+    .prepare(
+      `SELECT substr(start_time, 1, 16) AS start_time,
+              SUM(bytes_total) AS bytes_total
+       FROM flows
+       WHERE import_id = ?
+       GROUP BY substr(start_time, 1, 16)
+       ORDER BY start_time DESC
+       LIMIT 180`
+    )
+    .all(importId);
 };
 
 export const renameDevice = (deviceId: number, newName: string) => {

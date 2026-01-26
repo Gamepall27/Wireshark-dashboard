@@ -1,5 +1,22 @@
 export type ImportStatus = "queued" | "processing" | "done" | "failed";
 
+export interface LiveInterface {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface LiveStatus {
+  running: boolean;
+  importId: number | null;
+  interfaceName: string | null;
+}
+
+export interface ImportFlow {
+  start_time: string;
+  bytes_total: number;
+}
+
 export interface ImportRecord {
   id: number;
   file_path: string;
@@ -18,6 +35,12 @@ export interface DeviceSummary {
   first_seen: string;
   last_seen: string;
   total_bytes: number;
+}
+
+export interface DeviceTotals {
+  device_count: number;
+  total_bytes: number;
+  total_packets: number;
 }
 
 export interface CategorySummary {
