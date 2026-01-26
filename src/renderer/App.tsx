@@ -428,14 +428,19 @@ export default function App() {
   }, [importAnalytics]);
 
   return (
-    <div className="h-full bg-slate-950 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
-        <div>
-          <h1 className="text-2xl font-semibold">netscope-electron</h1>
-          <p className="text-sm text-slate-400">
-            PCAP/PCAPNG Imports, Flow-Aggregation und Device-Analytics
-          </p>
-        </div>
+    <div className="relative h-full text-slate-100">
+      <div className="pointer-events-none absolute inset-0 opacity-70">
+        <div className="absolute -left-20 top-24 h-64 w-64 rounded-full bg-cyan-400/20 blur-[120px]" />
+        <div className="absolute right-10 top-10 h-72 w-72 rounded-full bg-indigo-500/20 blur-[140px]" />
+      </div>
+      <div className="relative z-10">
+        <header className="flex items-center justify-between border-b border-white/10 bg-slate-950/60 px-6 py-4 backdrop-blur">
+          <div>
+            <h1 className="text-2xl font-semibold">netscope-electron</h1>
+            <p className="text-sm text-slate-400">
+              PCAP/PCAPNG Imports, Flow-Aggregation und Device-Analytics
+            </p>
+          </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm">
             <span className="text-xs uppercase text-slate-500">Live</span>
@@ -443,7 +448,7 @@ export default function App() {
               value={selectedInterface}
               onChange={event => setSelectedInterface(event.target.value)}
               disabled={liveStatus.running}
-              className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm"
+              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-sm"
             >
               {interfaces.map(item => (
                 <option key={item.id} value={item.name}>
@@ -455,14 +460,14 @@ export default function App() {
             <button
               onClick={handleStartLive}
               disabled={liveStatus.running || !selectedInterface}
-              className="rounded bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/40"
+              className="rounded-full bg-emerald-400/90 px-3 py-1 text-xs font-semibold text-slate-950 shadow-[0_6px_18px_rgba(52,211,153,0.3)] hover:bg-emerald-300 disabled:cursor-not-allowed disabled:bg-emerald-500/30"
             >
               Start
             </button>
             <button
               onClick={handleStopLive}
               disabled={!liveStatus.running}
-              className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-800/40"
+              className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200 hover:bg-white/20 disabled:cursor-not-allowed disabled:bg-white/10"
             >
               Stop
             </button>
@@ -474,23 +479,23 @@ export default function App() {
           </div>
           <button
             onClick={handleImport}
-            className="rounded bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400"
+            className="rounded-full bg-cyan-500/90 px-4 py-2 text-sm font-semibold text-slate-950 shadow-[0_8px_24px_rgba(34,211,238,0.35)] hover:bg-cyan-400"
           >
             PCAP importieren
           </button>
         </div>
       </header>
 
-      {errorMessage && (
-        <div className="mx-6 mt-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
-          {errorMessage}
-        </div>
-      )}
+        {errorMessage && (
+          <div className="mx-6 mt-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+            {errorMessage}
+          </div>
+        )}
 
-      <main className="grid h-[calc(100%-88px)] grid-cols-[320px_1fr] gap-4 p-6">
+        <main className="grid h-[calc(100%-88px)] grid-cols-[320px_1fr] gap-4 p-6">
         <section className="space-y-4">
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-            <h2 className="mb-3 text-sm font-semibold uppercase text-slate-400">Imports</h2>
+          <div className="panel p-4">
+            <h2 className="mb-3 panel-title">Imports</h2>
             <div className="space-y-3">
               {imports.map(item => (
                 <button
@@ -522,10 +527,10 @@ export default function App() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div className="panel p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h2 className="text-sm font-semibold uppercase text-slate-400">Ger?te</h2>
+                <h2 className="panel-title">Ger?te</h2>
                 <p className="text-xs text-slate-500">
                   {showAllDevices
                     ? `${deviceTotals.device_count} Ger?te ? ${formatBytes(
@@ -536,7 +541,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setShowAllDevices(current => !current)}
-                className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-300 hover:border-slate-600"
+                className="glass-button"
               >
                 {showAllDevices ?"Top 10" :"Alle"}
               </button>
@@ -576,7 +581,7 @@ export default function App() {
         </section>
 
         <section className="space-y-4">
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div className="panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold">Gesamttraffic</h2>
@@ -626,7 +631,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div className="panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold">Import Insights</h2>
@@ -750,7 +755,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div className="panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold">Device Dashboard</h2>
@@ -765,11 +770,11 @@ export default function App() {
                   <input
                     value={renameValue}
                     onChange={event => setRenameValue(event.target.value)}
-                    className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm"
+                    className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-sm"
                   />
                   <button
                     onClick={handleRename}
-                    className="rounded bg-slate-800 px-3 py-1 text-sm hover:bg-slate-700"
+                    className="rounded-full bg-white/10 px-3 py-1 text-sm text-slate-100 hover:bg-white/20"
                   >
                     Umbenennen
                   </button>
@@ -1061,9 +1066,9 @@ export default function App() {
             )}
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div className="panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase text-slate-400">
+              <h3 className="panel-title">
                 Flows (nach Bytes)
               </h3>
               <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -1076,7 +1081,7 @@ export default function App() {
                       host: event.target.value || undefined
                     }))
                   }
-                  className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
+                  className="rounded-full border border-white/10 bg-white/5 px-2 py-1"
                 />
                 <input
                   placeholder="Port"
@@ -1109,7 +1114,7 @@ export default function App() {
                       categoryId: event.target.value ? Number(event.target.value) : undefined
                     }))
                   }
-                  className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
+                  className="rounded-full border border-white/10 bg-white/5 px-2 py-1"
                 >
                   <option value="">Alle Kategorien</option>
                   {categories.map(category => (
@@ -1164,9 +1169,9 @@ export default function App() {
           </div>
         
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+          <div className="panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase text-slate-400">
+              <h3 className="panel-title">
                 LOG (Device-spezifisch)
               </h3>
               <button
@@ -1221,6 +1226,7 @@ export default function App() {
           </div>
         </section>
       </main>
+      </div>
     </div>
   );
 }
