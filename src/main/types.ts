@@ -11,6 +11,7 @@ export interface ParsedPacket {
   src_mac: string | null;
   dst_mac: string | null;
   host: string | null;
+  device_name: string | null;
 }
 
 export interface FlowFilters {

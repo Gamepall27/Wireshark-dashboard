@@ -72,6 +72,31 @@ const getFrameLength = (layers: Record<string, unknown>): number => {
   return 0;
 };
 
+const cleanDeviceName = (value: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  const withoutSuffix = trimmed.replace(/<[^>]+>$/, "").trim();
+  return withoutSuffix || null;
+};
+
+const getDeviceName = (layers: Record<string, unknown>): string | null => {
+  const candidates = [
+    "bootp_bootp_option_hostname",
+    "bootp_bootp_hostname",
+    "dhcp_dhcp_option_hostname",
+    "dhcp_dhcp_hostname",
+    "dhcp_option_hostname",
+    "nbns_nb_name",
+    "llmnr_llmnr_name"
+  ];
+  for (const key of candidates) {
+    const value = cleanDeviceName(getFirst(pickNestedLayer(layers, key)));
+    if (value) return value;
+  }
+  return null;
+};
+
 const parsePacketLine = (line: string): ParsedPacket | null => {
   if (!line.trim()) return null;
   try {
@@ -108,6 +133,7 @@ const parsePacketLine = (line: string): ParsedPacket | null => {
       proto,
       src_mac: getFirst(pickNestedLayer(layers, "eth_eth_src")),
       dst_mac: getFirst(pickNestedLayer(layers, "eth_eth_dst")),
+      device_name: getDeviceName(layers),
       host:
         getFirst(pickNestedLayer(layers, "dns_dns_qry_name")) ??
         getFirst(pickNestedLayer(layers, "tls_tls_handshake_extensions_server_name"))

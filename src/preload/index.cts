@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld("netscope", {
   getFlows: (importId: number, deviceId: number, filters: unknown) =>
     ipcRenderer.invoke("getFlows", importId, deviceId, filters),
   getImportFlows: (importId: number) => ipcRenderer.invoke("getImportFlows", importId),
+  getDeviceLog: (importId: number, deviceId: number, limit?: number, offset?: number) =>
+    ipcRenderer.invoke("getDeviceLog", importId, deviceId, limit, offset),
+  getDeviceAnalytics: (importId: number, deviceId: number) =>
+    ipcRenderer.invoke("getDeviceAnalytics", importId, deviceId),
+  getImportAnalytics: (importId: number) => ipcRenderer.invoke("getImportAnalytics", importId),
   renameDevice: (deviceId: number, newName: string) =>
     ipcRenderer.invoke("renameDevice", deviceId, newName)
 });
