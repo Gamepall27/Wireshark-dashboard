@@ -6,10 +6,13 @@ import {
   createImport,
   getCategories,
   getDeviceDetails,
+  getDeviceAnalytics,
+  getDeviceLog,
   getDevices,
   getAllDevices,
   getDeviceTotals,
   getFlows,
+  getImportAnalytics,
   getImportFlows,
   listImports,
   renameDevice,
@@ -41,7 +44,6 @@ const createWindow = () => {
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) {
     win.loadURL(devUrl);
-    win.webContents.openDevTools({ mode: "detach" });
   } else {
     win.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
@@ -160,6 +162,15 @@ app.whenReady().then(() => {
       getFlows(importId, deviceId, filters)
   );
   ipcMain.handle("getImportFlows", (_event, importId: number) => getImportFlows(importId));
+  ipcMain.handle("getDeviceLog", (_event, importId: number, deviceId: number, limit?: number, offset?: number) =>
+    getDeviceLog(importId, deviceId, limit, offset)
+  );
+  ipcMain.handle("getDeviceAnalytics", (_event, importId: number, deviceId: number) =>
+    getDeviceAnalytics(importId, deviceId)
+  );
+  ipcMain.handle("getImportAnalytics", (_event, importId: number) =>
+    getImportAnalytics(importId)
+  );
   ipcMain.handle("renameDevice", (_event, deviceId: number, newName: string) =>
     renameDevice(deviceId, newName)
   );

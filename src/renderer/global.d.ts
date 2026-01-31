@@ -1,10 +1,13 @@
 import {
   CategorySummary,
   DeviceDetails,
+  DeviceAnalytics,
+  DeviceLogEntry,
   DeviceSummary,
   DeviceTotals,
   FlowFilters,
   FlowRecord,
+  ImportAnalytics,
   ImportRecord,
   ImportFlow,
   LiveInterface,
@@ -34,6 +37,14 @@ declare global {
         filters: FlowFilters
       ) => Promise<FlowRecord[]>;
       getImportFlows: (importId: number) => Promise<ImportFlow[]>;
+      getDeviceLog: (
+        importId: number,
+        deviceId: number,
+        limit?: number,
+        offset?: number
+      ) => Promise<DeviceLogEntry[]>;
+      getDeviceAnalytics: (importId: number, deviceId: number) => Promise<DeviceAnalytics>;
+      getImportAnalytics: (importId: number) => Promise<ImportAnalytics>;
       renameDevice: (deviceId: number, newName: string) => Promise<void>;
     };
   }
